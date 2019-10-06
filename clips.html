@@ -84,7 +84,7 @@
                     data.data.forEach(clip => {
                         let regexp = /(https:\/\/clips-media-assets2.twitch.tv\/.*)-preview/g;
                         let match = regexp.exec(clip.thumbnail_url);
-                        this.clips.push({ "src": match[1], "clipped_by": clip.creator_name });
+                        if (!this.clips.some(c => c.src == match[1])) this.clips.push({ "src": match[1], "clipped_by": clip.creator_name });
                     });
 
                     this.save();
