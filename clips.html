@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>BRB Clips by 715209</title>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        video {
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <video id="player" autoplay="true"></video>
+    <script>
+        class Video {
+            constructor(elementId, twitchstuff) {
+                this.video = document.getElementById(elementId);
+                this.username = twitchstuff.username;
+                this.clientId = twitchstuff.clientId;
+                this.clips = [];
+                this.paused = false;
+
+                this.video.addEventListener('ended', this.endHandler.bind(this), false);
+                document.addEventListener("visibilitychange", this.pauseHandler.bind(this));
+
+                this.getUserId().then(() => this.get());
+            }
+
+            async getClips() {
+                let date = new Date();
+                date.setDate(date.getDate() - 7);
+                const formatted = date.toISOString();
+
+                await this.getClipsRequest();
+                await this.getClipsRequest(`&started_at=${formatted}`);
+
+                this.play()
+            }
+
+            async getUserId() {
+                let local = JSON.parse(window.localStorage.getItem("user"));
+                if (local != null && local.username == this.username) {
+                    this.broadcasterId = local.broadcasterId;
+                } else {
+                    localStorage.clear();
+
+                    try {
+                        let response = await fetch(`https://api.twitch.tv/helix/users?login=${this.username}`, {
+                            headers: {
+                                "Client-ID": this.clientId
+                            }
+                        });
+                        let data = await response.json();
+
+                        this.broadcasterId = data.data[0].id;
+
+                        window.localStorage.setItem("user", JSON.stringify({ broadcasterId: this.broadcasterId, username: this.username }));
+                    } catch (error) {
+                        console.log("Got an error requesting userid:", error);
+                    }
+                }
+            }
+
+            async getClipsRequest(params) {
+                try {
+                    let response = await fetch(`https://api.twitch.tv/helix/clips?broadcaster_id=${this.broadcasterId}&first=10${(params != null) ? params : ""}`, {
+                        headers: {
+                            "Client-ID": this.clientId
+                        }
+                    });
+                    let data = await response.json();
+
+                    data.data.forEach(clip => {
+                        let regexp = /(https:\/\/clips-media-assets2.twitch.tv\/.*)-preview/g;
+                        let match = regexp.exec(clip.thumbnail_url);
+                        this.clips.push({ "src": match[1], "clipped_by": clip.creator_name });
+                    });
+
+                    this.save();
+                } catch (error) {
+                    console.log("Got an error requesting clips:", error);
+                }
+            }
+
+            save() {
+                this.shuffle(this.clips);
+                window.localStorage.setItem("clips", JSON.stringify(this.clips));
+            }
+
+            get() {
+                let clips = window.localStorage.getItem("clips");
+
+                if (clips != null && clips != "" && clips != "[]") {
+                    this.clips = JSON.parse(clips);
+                    this.play();
+                } else {
+                    console.log("clips are empty time to fetch");
+                    this.getClips();
+                }
+            }
+
+            play() {
+                this.video.src = `${this.clips[0].src}.mp4`;
+            }
+
+            // https://stackoverflow.com/a/12646864
+            shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+            }
+
+            endHandler() {
+                this.clips.shift();
+                this.save();
+
+                if (this.clips.length > 0) {
+                    this.play();
+                } else {
+                    this.getClips();
+                }
+            }
+
+            pauseHandler() {
+                if (this.paused) {
+                    this.video.play();
+                } else {
+                    this.video.pause();
+                }
+
+                this.paused = !this.paused;
+            }
+        }
+
+        let snowman = new Video("player", { username: "YOURUSERNAME", clientId: "YOURCLIENTID" });
+    </script>
+</body>
+
+</html>
