@@ -5,17 +5,8 @@
 This is a HTML/JS project that will show the top 10 overall and top 10 most recent clips of a twitch channel.
 
 ## Prerequisities
-- There are two ways you can do this;
-> 1) Use your main Twitch account to get an oauth [HERE](https://twitchapps.com/tmi)
-     click the connect button, login and authorize to get your 'oauth:xxxxxxxxxxxxxxxxxxxxxx'
-     
-> 2) Register an ALT Twitch account [HERE](https://www.twitch.tv/signup), then get an oauth [HERE](https://twitchapps.com/tmi)
-     click the connect button, login and authorize to get your 'oauth:xxxxxxxxxxxxxxxxxxxxxx'
-
-Once you have your oauth follow these steps:
 - Go to the [Twitch Dev Console](https://dev.twitch.tv/console/apps), click the purple `Register Your Application` button.
-- Give your application a unique name, paste your recently acquired oauth in the `OAuth Redirect URLs` field, select a category,
-  I usually just use my BOTs oauth so it's 'chat bot', but you could use `Application Integration`.
+- Give your application a unique name, write `http://localhost` in the `OAuth Redirect URLs` field, select a category, You could just use `Application Integration`.
 - Click `Create`, afterwards it will bring you back to your application list, click on the `Manage` button.
 - Once you are in the `Manage Application` section you will see a couple new things, `Client ID` and a `New Secret` button, click it
   and you will get a `Client Secret`.
