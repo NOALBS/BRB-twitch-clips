@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Twitch Clips Player</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 10px;
+            margin: 0;
+        }
+        .video-container {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+            margin: 10px auto;
+            border: 5px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .progress-bar-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background-color: rgba(51, 51, 51, 0.7);
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0;
+            background-color: rgba(102, 102, 102, 0.9);
+        }
+        .console-container {
+            width: 1270px;
+            margin: 10px auto;
+            background-color: #000;
+            border: 5px solid rgb(20, 83, 20);
+            border-radius: 10px;
+            height: 16em;
+            overflow: hidden;
+            padding: 6px;
+            position: relative;
+        }
+        .console {
+            color: #00FF00;
+            font-family: "Courier New", Courier, monospace;
+            text-align: left;
+            line-height: 1.2em;
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+        }
+        .fullscreen-video {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            border: none;
+            border-radius: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="appContainer">
+        <!-- The content will be dynamically updated based on the debug option -->
+    </div>
+
+    <script>
+        const debug = false; // Set to false to show only the video in fullscreen
+        const twitchChannel = "YOUR_TWITCH_CHANNEL";
+        const clientId = "YOUR_CLIENT_ID";
+        const clientSecret = "YOUR_CLIENT_SECRET";
+
+        let clips = [];
+        let currentClipIndex = 0;
+        const maxLogLines = 10;
+
+        function initializeApp() {
+            const appContainer = document.getElementById('appContainer');
+            appContainer.innerHTML = '';
+
+            if (debug) {
+                appContainer.innerHTML = `
+                    <div class="video-container">
+                        <video id="twitchClipPlayer" autoplay></video>
+                        <div class="progress-bar-overlay">
+                            <div class="progress-bar" id="progressBar"></div>
+                        </div>
+                    </div>
+                    <div class="console-container" id="consoleContainer">
+                        <div class="console" id="consoleOutput"></div>
+                    </div>
+                `;
+            } else {
+                appContainer.innerHTML = `
+                    <video id="twitchClipPlayer" class="fullscreen-video" autoplay></video>
+                `;
+                document.body.style.padding = "0";
+            }
+        }
+
+        function logToConsole(message) {
+            if (debug) {
+                const consoleOutput = document.getElementById('consoleOutput');
+                if (consoleOutput) {
+                    const newLog = document.createElement('div');
+                    newLog.innerText = message;
+                    consoleOutput.appendChild(newLog);
+
+                    const logLines = consoleOutput.children;
+                    if (logLines.length > 10) {
+                        consoleOutput.removeChild(logLines[0]);
+                    }
+
+                    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+                }
+            }
+        }
+
+        async function fetchTwitchToken() {
+            logToConsole('Connecting to Twitch API...');
+            const response = await fetch('https://id.twitch.tv/oauth2/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`
+            });
+            const data = await response.json();
+            logToConsole('Authorization successful.');
+            return data.access_token;
+        }
+
+        async function fetchBroadcasterID(token) {
+            logToConsole('Finding broadcaster ID...');
+            const response = await fetch(`https://api.twitch.tv/helix/users?login=${twitchChannel}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Client-Id': clientId
+                }
+            });
+            const data = await response.json();
+            if (data.data && data.data.length > 0) {
+                logToConsole('Broadcaster ID found.');
+                return data.data[0].id;
+            } else {
+                throw new Error('Broadcaster ID not found.');
+            }
+        }
+
+        async function fetchTwitchClips(token, broadcasterId) {
+            logToConsole('Fetching clips...');
+            const response = await fetch(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}&first=100`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Client-Id': clientId
+                }
+            });
+            const data = await response.json();
+            if (data.data) {
+                logToConsole(`${data.data.length} clips found.`);
+                return data.data.map(clip => ({
+                    url: clip.thumbnail_url.replace('-preview-480x272.jpg', '.mp4'),
+                    title: clip.title,
+                    creator_name: clip.creator_name,
+                    created_at: clip.created_at,
+                    game: clip.game_id
+                }));
+            } else {
+                throw new Error('No clips found.');
+            }
+        }
+
+        async function loadClips() {
+            try {
+                const token = await fetchTwitchToken();
+                const broadcasterId = await fetchBroadcasterID(token);
+                clips = await fetchTwitchClips(token, broadcasterId);
+
+                if (clips.length === 0) {
+                    logToConsole('No clips found.');
+                    return;
+                }
+
+                await fetchGameNames(token);
+
+                shuffleClips();
+                playNextClip();
+            } catch (error) {
+                logToConsole('Error loading clips.');
+                console.error('Error:', error);
+            }
+        }
+
+        async function fetchGameNames(token) {
+            logToConsole('Fetching category names...');
+            const gameIds = [...new Set(clips.map(clip => clip.game))];
+            if (gameIds.length > 0) {
+                const response = await fetch(`https://api.twitch.tv/helix/games?id=${gameIds.join('&id=')}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Client-Id': clientId
+                    }
+                });
+                const data = await response.json();
+                const gameMap = {};
+                data.data.forEach(game => {
+                    gameMap[game.id] = game.name;
+                });
+                clips.forEach(clip => {
+                    clip.game = gameMap[clip.game] || 'Unknown';
+                });
+            }
+        }
+
+        function shuffleClips() {
+            logToConsole('Shuffling clips...');
+            for (let i = clips.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [clips[i], clips[j]] = [clips[j], clips[i]];
+            }
+            logToConsole('Clips shuffled.');
+        }
+
+        function playNextClip() {
+            const clip = clips[currentClipIndex];
+            const formattedDate = new Date(clip.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+            logToConsole(`Playing clip ${currentClipIndex + 1} of ${clips.length}:\nClipped by: ${clip.creator_name} on ${formattedDate} while streaming in the "${clip.game}" Category\nClip Title: ${clip.title}`);
+            const player = document.getElementById('twitchClipPlayer');
+            player.src = clip.url;
+
+            player.onended = () => {
+                currentClipIndex++;
+                if (currentClipIndex >= clips.length) {
+                    currentClipIndex = 0;
+                    shuffleClips();
+                }
+                logToConsole('Loading next clip...');
+                playNextClip();
+            };
+
+            if (debug) {
+                player.ontimeupdate = () => {
+                    const progressBar = document.getElementById('progressBar');
+                    const progress = (player.currentTime / player.duration) * 100;
+                    progressBar.style.width = progress + '%';
+                };
+            }
+        }
+
+        // Initialize the app based on the debug setting
+        initializeApp();
+        loadClips();
+    </script>
+</body>
+</html>
